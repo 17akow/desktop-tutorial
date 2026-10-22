@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Art Suzani Hotel — 20s</title>
+<style>
+  @font-face { font-family: "Playfair"; font-weight: 600; src: url(fonts/playfair-display-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Playfair"; font-weight: 700; src: url(fonts/playfair-display-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Playfair"; font-weight: 800; src: url(fonts/playfair-display-latin-800-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Playfair"; font-weight: 500; font-style: italic; src: url(fonts/playfair-display-latin-500-italic.woff2) format("woff2"); }
+  @font-face { font-family: "Cormorant"; font-weight: 500; src: url(fonts/cormorant-garamond-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Cormorant"; font-weight: 600; src: url(fonts/cormorant-garamond-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Cormorant"; font-weight: 500; font-style: italic; src: url(fonts/cormorant-garamond-latin-500-italic.woff2) format("woff2"); }
+  @font-face { font-family: "Cormorant"; font-weight: 600; font-style: italic; src: url(fonts/cormorant-garamond-latin-600-italic.woff2) format("woff2"); }
+  html, body { margin: 0; background: #070a18; height: 100%; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { height: 100vh; max-width: 100vw; aspect-ratio: 9/16; display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ---------------------------------------------------------------------------
+// Art Suzani Hotel — 20 second vertical promo (1080x1920, 30fps).
+// Every frame is a pure function of time t, so the renderer can step frames.
+// Open index.html in a browser to preview; ?lang=en for the English version.
+// Put your own hotel photos in photos/1.jpg, 2.jpg, 3.jpg to use them in
+// the room scene (otherwise an illustrated interior is drawn).
+// ---------------------------------------------------------------------------
+const W = 1080, H = 1920, DUR = 20;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const params = new URLSearchParams(location.search);
+const LANG = params.get('lang') === 'en' ? 'en' : 'uz';
+
+const T = {
+  uz: {
+    kicker: 'BUXORO',
+    hook1: 'Ming yillik tarix', hook2: 'qalbidagi uyingiz',
+    loc1: 'Kalon minorasidan', loc2: 'bir necha qadam',
+    pin: 'Xaqiqat ko‘chasi, 9 · Eski shahar',
+    room1: 'Milliy ruhdagi', room2: 'shinam xonalar',
+    chips: ['🌿  Bog‘ va terrasa', '☕  Mazali nonushta', '📶  Bepul Wi‑Fi', '🚐  Aeroport transferi'],
+    rateLabel: 'Mehmonlar bahosi', rateSub: 'Mehmonlar sevgan joy',
+    brandSub: 'HOTEL  ·  BUXORO',
+    cta: 'Hozir bron qiling',
+    maps: 'Google Maps’da toping',
+  },
+  en: {
+    kicker: 'BUKHARA',
+    hook1: 'Your home in the heart', hook2: 'of a thousand-year city',
+    loc1: 'Steps away from', loc2: 'the Kalon Minaret',
+    pin: '9 Khakikat St · Old Town',
+    room1: 'Cosy rooms', room2: 'in national style',
+    chips: ['🌿  Garden & terrace', '☕  Tasty breakfast', '📶  Free Wi‑Fi', '🚐  Airport shuttle'],
+    rateLabel: 'Guest rating', rateSub: 'Loved by travellers',
+    brandSub: 'HOTEL  ·  BUKHARA',
+    cta: 'Book your stay',
+    maps: 'Find us on Google Maps',
+  },
+}[LANG];
+
+const C = {
+  night: '#0b1030', indigo: '#151d4a', deep: '#070a18',
+  gold: '#e2b25a', goldL: '#f6d892', goldD: '#a8782c',
+  red: '#b8392c', redD: '#7d1f1b', turq: '#2bb3ad', turqD: '#167a7c',
+  cream: '#f6ecd6', ink: '#1a1426', rose: '#e07a5f',
+};
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const easeOut = k => 1 - Math.pow(1 - k, 3);
+const easeIn = k => k * k * k;
+const easeInOut = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const easeBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+// Per-scene visibility window with fades (in/out seconds).
+function win(t, a, b, fi = .5, fo = .5) {
+  if (t < a || t > b) return 0;
+  return Math.min(fi ? prog(t, a, a + fi) : 1, fo ? 1 - prog(t, b - fo, b) : 1);
+}
+
+function text(str, x, y, { font, color = C.cream, align = 'center', alpha = 1, track = 0, shadow = 0, base = 'alphabetic' } = {}) {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.font = font; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = base;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = track + 'px';
+  if (shadow) { ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = shadow; ctx.shadowOffsetY = shadow / 4; }
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+// Text that rises from behind a mask line (classic motion-graphics reveal).
+function revealText(str, x, y, k, opts) {
+  if (k <= 0) return;
+  const size = parseInt(opts.font.match(/(\d+)px/)[1], 10);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, y - size * 1.25, W, size * 1.6); ctx.clip();
+  const e = easeOut(k);
+  text(str, x, y + (1 - e) * size * 1.2, { ...opts, alpha: (opts.alpha ?? 1) * clamp(k * 2) });
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+// ---------- suzani ornaments ----------
+function petal(len, wid) {
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(wid, -len * .25, wid * .7, -len * .85, 0, -len);
+  ctx.bezierCurveTo(-wid * .7, -len * .85, -wid, -len * .25, 0, 0);
+  ctx.closePath();
+}
+
+// A suzani-style medallion (concentric rings of petals). k = 0..1 build-in.
+function medallion(cx, cy, R, rot, k, alpha = 1, palette = 'warm') {
+  if (k <= 0 || alpha <= 0) return;
+  const P = palette === 'warm'
+    ? { a: C.red, b: C.turq, c: C.gold, d: C.redD, line: C.goldL }
+    : { a: C.turq, b: C.gold, c: C.red, d: C.turqD, line: C.cream };
+  ctx.save();
+  ctx.translate(cx, cy); ctx.globalAlpha *= alpha;
+  const ring = (i, n) => easeBack(clamp(k * 1.6 - i * .14));
+  // outer dotted halo
+  const r0 = ring(0);
+  if (r0 > 0) {
+    ctx.save(); ctx.rotate(rot * .5);
+    for (let i = 0; i < 48; i++) {
+      const a = i / 48 * Math.PI * 2;
+      ctx.fillStyle = i % 2 ? P.line : P.c;
+      ctx.beginPath(); ctx.arc(Math.cos(a) * R * 1.02 * r0, Math.sin(a) * R * 1.02 * r0, R * .018, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // big outer petals
+  const r1 = ring(1);
+  if (r1 > 0) {
+    ctx.save(); ctx.rotate(rot);
+    for (let i = 0; i < 16; i++) {
+      ctx.save(); ctx.rotate(i / 16 * Math.PI * 2); ctx.scale(r1, r1);
+      petal(R * .92, R * .2); ctx.fillStyle = P.a; ctx.fill();
+      ctx.lineWidth = R * .012; ctx.strokeStyle = P.line; ctx.stroke();
+      ctx.save(); ctx.scale(.55, .62); petal(R * .92, R * .2); ctx.fillStyle = P.d; ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.arc(0, -R * .78, R * .035, 0, 7); ctx.fillStyle = P.line; ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  // turquoise leaves, offset
+  const r2 = ring(2);
+  if (r2 > 0) {
+    ctx.save(); ctx.rotate(-rot * 1.4 + Math.PI / 16);
+    for (let i = 0; i < 16; i++) {
+      ctx.save(); ctx.rotate(i / 16 * Math.PI * 2); ctx.scale(r2, r2);
+      petal(R * .6, R * .1); ctx.fillStyle = P.b; ctx.fill();
+      ctx.lineWidth = R * .008; ctx.strokeStyle = P.line; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  // disc
+  const r3 = ring(3);
+  if (r3 > 0) {
+    ctx.beginPath(); ctx.arc(0, 0, R * .4 * r3, 0, 7); ctx.fillStyle = P.c; ctx.fill();
+    ctx.lineWidth = R * .02; ctx.strokeStyle = P.line; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R * .34 * r3, 0, 7); ctx.fillStyle = C.ink; ctx.fill();
+  }
+  // inner rosette
+  const r4 = ring(4);
+  if (r4 > 0) {
+    ctx.save(); ctx.rotate(rot * 2);
+    for (let i = 0; i < 8; i++) {
+      ctx.save(); ctx.rotate(i / 8 * Math.PI * 2); ctx.scale(r4, r4);
+      petal(R * .3, R * .11); ctx.fillStyle = P.a; ctx.fill();
+      ctx.lineWidth = R * .008; ctx.strokeStyle = P.line; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(0, 0, R * .08 * r4, 0, 7); ctx.fillStyle = P.line; ctx.fill();
+  }
+  ctx.restore();
+}
+
+function smallRosette(x, y, r, rot, col, alpha) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.globalAlpha *= alpha;
+  for (let i = 0; i < 6; i++) { ctx.save(); ctx.rotate(i / 6 * Math.PI * 2); petal(r, r * .32); ctx.fillStyle = col; ctx.fill(); ctx.restore(); }
+  ctx.beginPath(); ctx.arc(0, 0, r * .2, 0, 7); ctx.fillStyle = C.goldL; ctx.fill();
+  ctx.restore();
+}
+
+// Horizontal ornamental band (used as border/wipe).
+function band(y, h, offset, alpha = 1) {
+  ctx.save(); ctx.globalAlpha *= alpha;
+  ctx.fillStyle = C.turqD; ctx.fillRect(0, y, W, h);
+  ctx.fillStyle = C.gold; ctx.fillRect(0, y, W, h * .08); ctx.fillRect(0, y + h * .92, W, h * .08);
+  const step = h * 1.1;
+  for (let x = -step + (offset % step); x < W + step; x += step) {
+    smallRosette(x, y + h / 2, h * .36, offset * .01, C.red, 1);
+    ctx.beginPath(); ctx.arc(x + step / 2, y + h / 2, h * .08, 0, 7); ctx.fillStyle = C.goldL; ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------- gold dust ----------
+const dust = (() => { const r = rng(7); return Array.from({ length: 90 }, () => ({ x: r() * W, y: r() * H, s: .6 + r() * 2.4, v: 12 + r() * 40, p: r() * 6.28, d: r() })); })();
+function drawDust(t, alpha = 1, warm = true) {
+  if (alpha <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const d of dust) {
+    const y = (d.y - t * d.v + H * 10) % H;
+    const x = d.x + Math.sin(t * .8 + d.p) * 18;
+    const tw = .45 + .55 * Math.sin(t * 2.2 + d.p * 3);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, d.s * 6);
+    const col = warm ? '246,216,146' : '200,240,235';
+    g.addColorStop(0, `rgba(${col},${.75 * tw * alpha})`); g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g; ctx.fillRect(x - d.s * 6, y - d.s * 6, d.s * 12, d.s * 12);
+  }
+  ctx.restore();
+}
+
+// ---------- grain + vignette (pre-baked) ----------
+const grain = (() => {
+  const g = document.createElement('canvas'); g.width = 512; g.height = 512;
+  const gx = g.getContext('2d'); const id = gx.createImageData(512, 512); const r = rng(3);
+  for (let i = 0; i < id.data.length; i += 4) { const v = r() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 18; }
+  gx.putImageData(id, 0, 0); return g;
+})();
+function finish(t) {
+  const v = ctx.createRadialGradient(W / 2, H * .48, H * .28, W / 2, H * .5, H * .78);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)');
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  const f = Math.floor(t * 30);
+  ctx.save(); ctx.globalCompositeOperation = 'overlay';
+  ctx.translate(-((f * 137) % 512), -((f * 251) % 512));
+  ctx.fillStyle = ctx.createPattern(grain, 'repeat'); ctx.fillRect(0, 0, W + 1024, H + 1024);
+  ctx.restore();
+}
+
+// ---------- optional user photos ----------
+const photos = [];
+['photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg'].forEach(src => {
+  const im = new Image(); im.onload = () => photos.push(im); im.src = src;
+});
+function coverImage(im, scale, ox, oy) {
+  const s = Math.max(W / im.width, H / im.height) * scale;
+  const w = im.width * s, h = im.height * s;
+  ctx.drawImage(im, (W - w) / 2 + ox, (H - h) / 2 + oy, w, h);
+}
+
+// =================== SCENES ===================
+
+// 1) Hook: suzani medallion blooms on indigo night. 0 – 4.0s
+function scene1(t) {
+  const bg = ctx.createRadialGradient(W / 2, H * .42, 50, W / 2, H * .5, H * .8);
+  bg.addColorStop(0, '#24306e'); bg.addColorStop(.55, C.night); bg.addColorStop(1, C.deep);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // faint rosette lattice
+  for (let i = 0; i < 7; i++) for (let j = 0; j < 12; j++) {
+    const x = (i + (j % 2) * .5) * 180, y = j * 170 + 40 - t * 12;
+    smallRosette(x, y, 26, t * .2 + i, C.gold, .07 * prog(t, 0, 1));
+  }
+  const k = prog(t, .1, 2.0);
+  const zoom = 1 + easeIn(prog(t, 3.1, 4.0)) * 5.5;
+  const cy = H * .40;
+  // glow
+  const gl = ctx.createRadialGradient(W / 2, cy, 0, W / 2, cy, 520 * zoom);
+  gl.addColorStop(0, `rgba(226,178,90,${.35 * k})`); gl.addColorStop(1, 'rgba(226,178,90,0)');
+  ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+  medallion(W / 2, cy, 330 * zoom, t * .25, k);
+  drawDust(t, prog(t, .3, 1.5));
+  const out = 1 - prog(t, 3.0, 3.5);
+  revealText(T.kicker, W / 2, H * .655, prog(t, 1.0, 1.7), { font: '600 40px Inter', color: C.goldL, track: 22, alpha: out });
+  // gold rule
+  const rl = easeOut(prog(t, 1.2, 2.0)) * 220;
+  ctx.save(); ctx.globalAlpha = out; ctx.fillStyle = C.gold; ctx.fillRect(W / 2 - rl / 2, H * .675, rl, 3); ctx.restore();
+  revealText(T.hook1, W / 2, H * .745, prog(t, 1.45, 2.2), { font: '700 86px Playfair', color: C.cream, alpha: out, shadow: 20 });
+  revealText(T.hook2, W / 2, H * .79 + 30, prog(t, 1.65, 2.4), { font: 'italic 500 84px Playfair', color: C.goldL, alpha: out, shadow: 20 });
+}
+
+// 2) Location: sunset skyline of Bukhara with Kalon minaret. 3.5 – 8.0s
+function minaret(x, base, s, col, lit) {
+  ctx.save(); ctx.translate(x, base); ctx.scale(s, s);
+  ctx.fillStyle = col;
+  // tapered shaft
+  ctx.beginPath(); ctx.moveTo(-62, 0); ctx.lineTo(-38, -760); ctx.lineTo(38, -760); ctx.lineTo(62, 0); ctx.closePath(); ctx.fill();
+  // decorative bands (brick patterns)
+  ctx.fillStyle = lit;
+  for (let i = 1; i < 9; i++) { const y = -i * 82, w = 62 - (i * 82 / 760) * 24; ctx.fillRect(-w, y, w * 2, 6); }
+  // muqarnas cornice + lantern with arches
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(-40, -760); ctx.lineTo(-56, -800); ctx.lineTo(56, -800); ctx.lineTo(40, -760); ctx.closePath(); ctx.fill();
+  ctx.fillRect(-50, -880, 100, 80);
+  ctx.fillStyle = lit;
+  for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 19 - 6, -812); ctx.lineTo(i * 19 - 6, -855); ctx.quadraticCurveTo(i * 19, -868, i * 19 + 6, -855); ctx.lineTo(i * 19 + 6, -812); ctx.fill(); }
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(-54, -880); ctx.lineTo(54, -880); ctx.lineTo(44, -902); ctx.lineTo(-44, -902); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -902, 30, 16, 0, Math.PI, 0); ctx.fill();
+  ctx.restore();
+}
+function dome(x, base, r, col, top, drum = .5) {
+  ctx.fillStyle = col; ctx.fillRect(x - r * 1.05, base - r * drum, r * 2.1, r * drum);
+  const g = ctx.createLinearGradient(x - r, 0, x + r, 0);
+  g.addColorStop(0, top[0]); g.addColorStop(.45, top[1]); g.addColorStop(1, top[2]);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.moveTo(x - r, base - r * drum);
+  ctx.bezierCurveTo(x - r, base - r * drum - r * 1.15, x - r * .15, base - r * drum - r * 1.3, x, base - r * drum - r * 1.42);
+  ctx.bezierCurveTo(x + r * .15, base - r * drum - r * 1.3, x + r, base - r * drum - r * 1.15, x + r, base - r * drum);
+  ctx.closePath(); ctx.fill();
+  // rib lines
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2;
+  for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(x + i * r * .38, base - r * drum); ctx.quadraticCurveTo(x + i * r * .3, base - r * drum - r * 1.1, x, base - r * drum - r * 1.42); ctx.stroke(); }
+  ctx.fillStyle = col; ctx.fillRect(x - 3, base - r * drum - r * 1.42 - 40, 6, 40);
+}
+function iwan(x, base, w, h, col, inner) {
+  ctx.fillStyle = col; ctx.fillRect(x - w / 2, base - h, w, h);
+  ctx.fillStyle = inner;
+  const aw = w * .5, ah = h * .72;
+  ctx.beginPath(); ctx.moveTo(x - aw / 2, base); ctx.lineTo(x - aw / 2, base - ah * .6);
+  ctx.quadraticCurveTo(x - aw / 2, base - ah * .95, x, base - ah);
+  ctx.quadraticCurveTo(x + aw / 2, base - ah * .95, x + aw / 2, base - ah * .6);
+  ctx.lineTo(x + aw / 2, base); ctx.closePath(); ctx.fill();
+}
+function scene2(t) {
+  const lt = t - 3.5;
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#1b1f52'); sky.addColorStop(.32, '#6b3a73'); sky.addColorStop(.55, '#e0715a'); sky.addColorStop(.72, '#f6b46a'); sky.addColorStop(1, '#f9d79a');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  // sun
+  const sy = H * .62 + lt * 14;
+  const sg = ctx.createRadialGradient(W * .64, sy, 0, W * .64, sy, 420);
+  sg.addColorStop(0, 'rgba(255,240,200,1)'); sg.addColorStop(.18, 'rgba(255,214,140,.95)'); sg.addColorStop(.19, 'rgba(255,200,130,.5)'); sg.addColorStop(1, 'rgba(255,170,100,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
+  // birds
+  ctx.strokeStyle = 'rgba(40,20,50,.7)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const bx = 120 + i * 95 + lt * 60, by = 520 + Math.sin(i * 2.1) * 80 - lt * 10, f = Math.sin(lt * 9 + i) * 10;
+    ctx.beginPath(); ctx.moveTo(bx - 20, by - f); ctx.quadraticCurveTo(bx - 8, by - 10, bx, by); ctx.quadraticCurveTo(bx + 8, by - 10, bx + 20, by - f); ctx.stroke();
+  }
+  const rise = easeOut(prog(lt, 0, 1.4));
+  const push = 1 + lt * .02;
+  ctx.save(); ctx.translate(W / 2, H); ctx.scale(push, push); ctx.translate(-W / 2, -H);
+  // far layer
+  const far = '#7a3f63', base1 = H * .80 + (1 - rise) * 500;
+  dome(200, base1, 95, far, ['#6d3a5d', '#8a4c6c', '#6d3a5d']);
+  dome(880, base1 + 10, 80, far, ['#6d3a5d', '#8a4c6c', '#6d3a5d']);
+  ctx.fillStyle = far; ctx.fillRect(0, base1 - 30, W, 400);
+  // mid layer — Kalon minaret + Poi Kalon & Mir-i-Arab domes
+  const mid = '#3a1f45', base2 = H * .86 + (1 - easeOut(prog(lt, .15, 1.6))) * 700;
+  iwan(330, base2, 300, 330, mid, '#2a1534');
+  minaret(560, base2, 1.0, mid, '#55305c');
+  dome(830, base2 - 60, 120, mid, ['#13606a', '#2bb3ad', '#0f4d57']);
+  dome(140, base2 - 40, 105, mid, ['#13606a', '#2bb3ad', '#0f4d57']);
+  ctx.fillStyle = mid; ctx.fillRect(0, base2 - 70, W, 500);
+  // near rooftops
+  const near = '#1c0f26', base3 = H * .93 + (1 - easeOut(prog(lt, .3, 1.7))) * 800;
+  ctx.fillStyle = near;
+  ctx.beginPath(); ctx.moveTo(0, H);
+  const r = rng(11);
+  for (let x = 0; x <= W; x += 90) { const hh = 40 + r() * 90; ctx.lineTo(x, base3 - hh); ctx.lineTo(x + 90, base3 - hh); }
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  drawDust(t, .6);
+  // map pin bounce + text (top area, above skyline)
+  const pk = prog(lt, .9, 1.6);
+  if (pk > 0) {
+    const px = W / 2, py = 380 - (1 - easeBack(pk)) * 120;
+    ctx.save(); ctx.globalAlpha = clamp(pk * 2) * (1 - prog(t, 7.6, 8.0));
+    ctx.translate(px, py);
+    ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(0, -46, 40, Math.PI * .85, Math.PI * .15); ctx.lineTo(0, 10); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -46, 15, 0, 7); ctx.fillStyle = C.cream; ctx.fill();
+    ctx.restore();
+  }
+  const out = 1 - prog(t, 7.5, 8.0);
+  revealText(T.loc1, W / 2, 520, prog(lt, 1.1, 1.8), { font: '600 64px Cormorant', color: C.cream, alpha: out, shadow: 24 });
+  revealText(T.loc2, W / 2, 615, prog(lt, 1.3, 2.0), { font: '700 92px Playfair', color: '#fff4dc', alpha: out, shadow: 28 });
+  revealText(T.pin, W / 2, 700, prog(lt, 1.7, 2.4), { font: '500 38px Inter', color: '#ffe3b3', track: 2, alpha: out, shadow: 16 });
+}
+
+// 3) Rooms: camera pushes through a tiled arch into a warm suzani room. 7.5 – 12.8s
+function archPath(cx, base, w, h, keep = false) {
+  if (!keep) ctx.beginPath();
+  ctx.moveTo(cx - w / 2, base); ctx.lineTo(cx - w / 2, base - h * .58);
+  ctx.bezierCurveTo(cx - w / 2, base - h * .86, cx - w * .14, base - h * .95, cx, base - h);
+  ctx.bezierCurveTo(cx + w * .14, base - h * .95, cx + w / 2, base - h * .86, cx + w / 2, base - h * .58);
+  ctx.lineTo(cx + w / 2, base); ctx.closePath();
+}
+function interior(t) {
+  if (photos.length) {
+    const lt = t - 7.5, n = photos.length, seg = 5.3 / n;
+    photos.forEach((im, i) => {
+      const a = win(lt, i * seg - .3, (i + 1) * seg + .3, i ? .6 : 0, i < n - 1 ? .6 : 0);
+      if (a <= 0) return;
+      ctx.save(); ctx.globalAlpha = a; coverImage(im, 1.08 + (lt - i * seg) * .03, (i % 2 ? -1 : 1) * (lt - i * seg) * 12, 0); ctx.restore();
+    });
+    ctx.fillStyle = 'rgba(40,15,10,.18)'; ctx.fillRect(0, 0, W, H);
+    return;
+  }
+  // illustrated interior
+  const wall = ctx.createLinearGradient(0, 0, 0, H);
+  wall.addColorStop(0, '#5a2a1c'); wall.addColorStop(.6, '#8c4a2b'); wall.addColorStop(1, '#3b1a12');
+  ctx.fillStyle = wall; ctx.fillRect(0, 0, W, H);
+  // carved wooden ceiling beams
+  ctx.fillStyle = '#2b130d'; for (let i = 0; i < 9; i++) ctx.fillRect(i * 135 - 20, 0, 40, 380);
+  ctx.fillStyle = '#c58b4a'; ctx.fillRect(0, 370, W, 14);
+  // suzani wall hanging
+  const hx = W / 2, hy = 830;
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 40;
+  ctx.fillStyle = C.cream; ctx.fillRect(hx - 380, hy - 380, 760, 760); ctx.restore();
+  ctx.strokeStyle = C.red; ctx.lineWidth = 26; ctx.strokeRect(hx - 352, hy - 352, 704, 704);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; smallRosette(hx + Math.cos(a) * 300 * (i % 2 ? 1 : 1.18), hy + Math.sin(a) * 300 * (i % 2 ? 1 : 1.18), 34, t * .2, i % 2 ? C.turq : C.red, 1); }
+  medallion(hx, hy, 230, t * .12, 1);
+  // bed / sofa with cushions
+  ctx.fillStyle = '#2a1712'; ctx.fillRect(80, 1240, 920, 120);
+  roundRect(110, 1150, 860, 120, 30); ctx.fillStyle = '#f2e3c4'; ctx.fill();
+  [[200, C.red], [380, C.turq], [700, C.turq], [880, C.red]].forEach(([x, c]) => { roundRect(x - 80, 1060, 160, 120, 40); ctx.fillStyle = c; ctx.fill(); ctx.strokeStyle = C.gold; ctx.lineWidth = 5; ctx.stroke(); });
+  // carpet floor
+  const fl = ctx.createLinearGradient(0, 1360, 0, H);
+  fl.addColorStop(0, '#6e1f1a'); fl.addColorStop(1, '#3a0f0d');
+  ctx.fillStyle = fl; ctx.fillRect(0, 1360, W, H - 1360);
+  ctx.save(); ctx.translate(W / 2, 1640); ctx.scale(1, .32); medallion(0, 0, 420, 0, 1, .55, 'cool'); ctx.restore();
+  // hanging lanterns (flicker)
+  [[200, 600], [880, 600]].forEach(([x, y], i) => {
+    const fk = .85 + .15 * Math.sin(t * 13 + i * 2) * Math.sin(t * 7.3 + i);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 380);
+    g.addColorStop(0, `rgba(255,200,110,${.55 * fk})`); g.addColorStop(1, 'rgba(255,170,80,0)');
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(x - 380, y - 380, 760, 760); ctx.restore();
+    ctx.strokeStyle = '#1a0d08'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, 384); ctx.lineTo(x, y - 60); ctx.stroke();
+    ctx.fillStyle = '#c8913c'; ctx.beginPath(); ctx.moveTo(x - 36, y - 60); ctx.lineTo(x + 36, y - 60); ctx.lineTo(x + 50, y); ctx.lineTo(x, y + 70); ctx.lineTo(x - 50, y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = `rgba(255,236,170,${fk})`; ctx.beginPath(); ctx.ellipse(x, y, 24, 36, 0, 0, 7); ctx.fill();
+  });
+}
+function tileFrame(t) {
+  // brick/tile wall with a pointed arch cut out, drawn with evenodd fill
+  const cx = W / 2, base = H + 10, aw = 860, ah = 1500;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H);
+  archPath(cx, base, aw, ah, true);
+  ctx.clip('evenodd');
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#c99a62'); g.addColorStop(1, '#9c6b3c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // brick pattern
+  ctx.strokeStyle = 'rgba(80,45,20,.35)'; ctx.lineWidth = 3;
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); for (let x = (y / 40 % 2) * 60; x < W; x += 120) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 40); ctx.stroke(); } }
+  // tile spandrels
+  for (let i = 0; i < 2; i++) smallRosette(i ? W - 120 : 120, 280, 70, t * .3, C.turq, .95);
+  ctx.restore();
+  // turquoise tile border around the arch
+  ctx.save();
+  archPath(cx, base, aw + 70, ah + 50); ctx.lineWidth = 46; ctx.strokeStyle = C.turqD; ctx.stroke();
+  ctx.setLineDash([2, 30]); ctx.lineCap = 'round'; ctx.lineWidth = 16; ctx.strokeStyle = C.goldL; ctx.stroke();
+  ctx.setLineDash([]); archPath(cx, base, aw + 10, ah + 4); ctx.lineWidth = 8; ctx.strokeStyle = C.gold; ctx.stroke();
+  ctx.restore();
+}
+function scene3(t) {
+  const lt = t - 7.5;
+  // camera: start zoomed into arch (we're "outside"), dolly through it
+  const z = lerp(1.0, 1.9, easeInOut(prog(lt, .4, 5.3)));
+  ctx.save(); ctx.translate(W / 2, H * .62); ctx.scale(1 + lt * .02, 1 + lt * .02); ctx.translate(-W / 2, -H * .62);
+  interior(t);
+  ctx.restore();
+  ctx.save(); ctx.translate(W / 2, H * .62); ctx.scale(z, z); ctx.translate(-W / 2, -H * .62);
+  tileFrame(t);
+  ctx.restore();
+  drawDust(t, .7);
+  // title card (top)
+  const out = 1 - prog(t, 12.3, 12.8);
+  ctx.save(); ctx.globalAlpha = out * prog(lt, .3, .9);
+  const tg = ctx.createLinearGradient(0, 0, 0, 720); tg.addColorStop(0, 'rgba(15,8,20,.92)'); tg.addColorStop(.6, 'rgba(15,8,20,.7)'); tg.addColorStop(1, 'rgba(15,8,20,0)');
+  ctx.fillStyle = tg; ctx.fillRect(0, 0, W, 720); ctx.restore();
+  revealText(T.room1, W / 2, 300, prog(lt, .5, 1.2), { font: '600 66px Cormorant', color: C.goldL, alpha: out, shadow: 20 });
+  revealText(T.room2, W / 2, 400, prog(lt, .7, 1.4), { font: '700 96px Playfair', color: C.cream, alpha: out, shadow: 24 });
+  // amenity chips pop in
+  ctx.save(); const bgk = prog(lt, 1.6, 2.2) * out;
+  const bg = ctx.createLinearGradient(0, H - 900, 0, H); bg.addColorStop(0, 'rgba(15,8,20,0)'); bg.addColorStop(1, `rgba(15,8,20,${.85 * bgk})`);
+  ctx.fillStyle = bg; ctx.fillRect(0, H - 900, W, 900); ctx.restore();
+  T.chips.forEach((s, i) => {
+    const k = prog(lt, 1.8 + i * .32, 2.3 + i * .32);
+    if (k <= 0) return;
+    const e = easeBack(k), y = 1180 + i * 132, w = 640, x = W / 2 - w / 2 + (1 - e) * (i % 2 ? 300 : -300);
+    ctx.save(); ctx.globalAlpha = clamp(k * 2) * out;
+    roundRect(x, y, w, 104, 52); ctx.fillStyle = 'rgba(246,236,214,.95)'; ctx.fill();
+    ctx.strokeStyle = C.gold; ctx.lineWidth = 3; ctx.stroke();
+    ctx.restore();
+    text(s, x + 50, y + 68, { font: '600 42px Inter', color: C.ink, align: 'left', alpha: clamp(k * 2) * out });
+  });
+}
+
+// 4) Social proof: rating counter. 12.5 – 16.2s
+function scene4(t) {
+  const lt = t - 12.5;
+  const bg = ctx.createRadialGradient(W / 2, H * .45, 40, W / 2, H * .5, H * .8);
+  bg.addColorStop(0, '#173f5c'); bg.addColorStop(.6, '#0d1b3a'); bg.addColorStop(1, C.deep);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  medallion(W / 2, H * .44, 640, t * .08, 1, .06, 'cool');
+  band(-10 + (1 - easeOut(prog(lt, 0, .8))) * -200, 110, t * 120);
+  band(H - 100 + (1 - easeOut(prog(lt, 0, .8))) * 200, 110, -t * 120);
+  drawDust(t, .8);
+  const out = 1 - prog(t, 15.7, 16.2);
+  revealText(T.rateLabel.toUpperCase(), W / 2, 640, prog(lt, .2, .8), { font: '600 40px Inter', color: C.goldL, track: 12, alpha: out });
+  // counter
+  const ck = easeOut(prog(lt, .4, 1.9));
+  const val = (9.3 * ck).toFixed(1);
+  const sc = .8 + .2 * easeBack(prog(lt, .3, 1.0));
+  ctx.save(); ctx.translate(W / 2, 930); ctx.scale(sc, sc);
+  const gg = ctx.createLinearGradient(0, -230, 0, 20); gg.addColorStop(0, C.goldL); gg.addColorStop(1, C.goldD);
+  text(val, 0, 0, { font: '800 300px Playfair', color: gg, alpha: out * prog(lt, .3, .7), shadow: 30 });
+  ctx.restore();
+  text('/ 10', W / 2, 1060, { font: 'italic 500 80px Playfair', color: C.cream, alpha: out * prog(lt, .9, 1.4) });
+  // stars
+  for (let i = 0; i < 5; i++) {
+    const k = prog(lt, 1.2 + i * .14, 1.6 + i * .14);
+    if (k <= 0) continue;
+    const s = easeBack(k) * 1, x = W / 2 + (i - 2) * 125, y = 1190;
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.rotate((1 - k) * 1.2); ctx.globalAlpha = out;
+    ctx.beginPath();
+    for (let j = 0; j < 10; j++) { const r = j % 2 ? 22 : 52, a = j / 10 * Math.PI * 2 - Math.PI / 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.closePath(); ctx.fillStyle = C.gold; ctx.shadowColor = 'rgba(246,216,146,.8)'; ctx.shadowBlur = 25; ctx.fill();
+    ctx.restore();
+  }
+  revealText(T.rateSub, W / 2, 1360, prog(lt, 2.0, 2.6), { font: 'italic 600 70px Cormorant', color: C.cream, alpha: out });
+}
+
+// 5) Brand + call to action. 15.8 – 20s
+function scene5(t) {
+  const lt = t - 15.8;
+  const bg = ctx.createRadialGradient(W / 2, H * .42, 30, W / 2, H * .5, H * .85);
+  bg.addColorStop(0, '#2a1a3e'); bg.addColorStop(.55, '#140d26'); bg.addColorStop(1, '#06040c');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // light sweep
+  const sw = lerp(-600, W + 600, easeInOut(prog(lt, .6, 2.2)));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const sg = ctx.createLinearGradient(sw - 300, 0, sw + 300, 0);
+  sg.addColorStop(0, 'rgba(246,216,146,0)'); sg.addColorStop(.5, 'rgba(246,216,146,.10)'); sg.addColorStop(1, 'rgba(246,216,146,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H); ctx.restore();
+  // ornamental frame
+  const fk = easeOut(prog(lt, 0, 1.0));
+  ctx.save(); ctx.globalAlpha = fk;
+  ctx.strokeStyle = C.gold; ctx.lineWidth = 4; roundRect(70, 230, W - 140, H - 460, 30); ctx.stroke();
+  ctx.lineWidth = 1.5; roundRect(92, 252, W - 184, H - 504, 22); ctx.stroke();
+  [[70, 230], [W - 70, 230], [70, H - 230], [W - 70, H - 230]].forEach(([x, y]) => smallRosette(x, y, 40, t * .5, C.red, 1));
+  ctx.restore();
+  medallion(W / 2, 640, 230, t * .3, prog(lt, 0, 1.4));
+  drawDust(t, 1);
+  // logo wordmark
+  const lk = prog(lt, .5, 1.3);
+  ctx.save(); ctx.translate(W / 2, 1060);
+  const s = .9 + .1 * easeOut(lk); ctx.scale(s, s);
+  const gg = ctx.createLinearGradient(-400, -120, 400, 0); gg.addColorStop(0, C.goldD); gg.addColorStop(.5, C.goldL); gg.addColorStop(1, C.goldD);
+  text('ART SUZANI', 0, 0, { font: '800 128px Playfair', color: gg, alpha: easeOut(lk), track: 6, shadow: 30 });
+  ctx.restore();
+  revealText(T.brandSub, W / 2, 1150, prog(lt, .9, 1.5), { font: '600 40px Inter', color: C.cream, track: 14 });
+  // CTA button with pulse
+  const bk = prog(lt, 1.3, 1.9);
+  if (bk > 0) {
+    const pulse = 1 + .035 * Math.sin(Math.max(0, lt - 1.9) * 6);
+    const e = easeBack(bk) * pulse, bw = 660, bh = 130, by = 1330;
+    ctx.save(); ctx.translate(W / 2, by + bh / 2); ctx.scale(e, e); ctx.globalAlpha = clamp(bk * 2);
+    ctx.shadowColor = 'rgba(226,178,90,.6)'; ctx.shadowBlur = 50;
+    roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+    const bgr = ctx.createLinearGradient(0, -bh / 2, 0, bh / 2); bgr.addColorStop(0, C.goldL); bgr.addColorStop(1, C.gold);
+    ctx.fillStyle = bgr; ctx.fill(); ctx.shadowBlur = 0;
+    text(T.cta + '  →', 0, 18, { font: '700 52px Inter', color: C.ink });
+    ctx.restore();
+  }
+  // maps line
+  const mk = prog(lt, 1.9, 2.5);
+  if (mk > 0) {
+    ctx.save(); ctx.globalAlpha = easeOut(mk);
+    ctx.font = '500 40px Inter';
+    const tw = ctx.measureText(T.maps).width, x0 = W / 2 - (tw + 60) / 2, y = 1570;
+    ctx.translate(x0 + 18, y - 14);
+    ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(0, -10, 18, Math.PI * .85, Math.PI * .15); ctx.lineTo(0, 18); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -10, 7, 0, 7); ctx.fillStyle = C.cream; ctx.fill();
+    ctx.restore();
+    text(T.maps, W / 2 + 30, 1570, { font: '500 40px Inter', color: C.cream, alpha: easeOut(mk) });
+  }
+}
+
+// light-leak flash used between scenes
+function flash(t, at, dur = .5, a = .6) {
+  const k = 1 - Math.abs((t - at) / dur);
+  if (k <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(W * .7, H * .3, 0, W * .7, H * .3, H * .9);
+  g.addColorStop(0, `rgba(255,214,150,${a * easeOut(k)})`); g.addColorStop(1, 'rgba(255,140,80,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+}
+
+// =================== COMPOSITOR ===================
+function renderFrame(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = C.deep; ctx.fillRect(0, 0, W, H);
+
+  if (t < 4.0) scene1(t);
+  // 1 -> 2: circular iris reveal from the medallion center
+  if (t >= 3.4 && t < 8.1) {
+    const k = easeInOut(prog(t, 3.4, 4.0));
+    ctx.save();
+    if (k < 1) { ctx.beginPath(); ctx.arc(W / 2, H * .40, k * H * 1.1, 0, 7); ctx.clip(); }
+    scene2(t);
+    ctx.restore();
+  }
+  // 2 -> 3: arch frame slides up while crossfading
+  if (t >= 7.6 && t < 12.9) {
+    const k = easeInOut(prog(t, 7.6, 8.2));
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 260); scene3(t); ctx.restore();
+  }
+  // 3 -> 4: ornamental band wipe
+  if (t >= 12.4 && t < 16.3) {
+    const k = easeInOut(prog(t, 12.4, 12.9));
+    ctx.save(); ctx.beginPath(); ctx.rect(0, H - k * (H + 120), W, H + 240); ctx.clip(); scene4(t); ctx.restore();
+    if (k > 0 && k < 1) band(H - k * (H + 120) - 60, 120, t * 300);
+  }
+  if (t >= 15.8) { ctx.save(); ctx.globalAlpha = easeInOut(prog(t, 15.8, 16.3)); scene5(t); ctx.restore(); }
+
+  flash(t, 3.9, .45, .5);
+  flash(t, 7.9, .45, .45);
+  flash(t, 16.0, .5, .35);
+  finish(t);
+  // fade from/to black at the very ends
+  const fb = Math.max(1 - prog(t, 0, .35), prog(t, 19.6, 20));
+  if (fb > 0) { ctx.fillStyle = `rgba(0,0,0,${fb})`; ctx.fillRect(0, 0, W, H); }
+}
+
+window.renderFrame = renderFrame;
+window.ready = (async () => {
+  await Promise.all([
+    '600 10px Playfair', '700 10px Playfair', '800 10px Playfair', 'italic 500 10px Playfair',
+    '500 10px Cormorant', '600 10px Cormorant', 'italic 600 10px Cormorant',
+  ].map(f => document.fonts.load(f, 'Aa‘’')));
+  await new Promise(r => setTimeout(r, 300)); // let optional photos load
+  return true;
+})();
+
+if (!params.has('render')) {
+  window.ready.then(() => {
+    const t0 = performance.now();
+    const loop = () => { renderFrame(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); };
+    loop();
+  });
+}
+</script>
+</body>
+</html>

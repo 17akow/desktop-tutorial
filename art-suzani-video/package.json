@@ -1,0 +1,17 @@
+{
+  "name": "art-suzani-video",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.1.0",
+    "@fontsource/playfair-display": "^5.1.0",
+    "playwright": "^1.56.1"
+  }
+}
